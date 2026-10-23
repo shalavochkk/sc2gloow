@@ -1,108 +1,134 @@
 # sc2gloow
 
-SoundCloud to Gloowroom transfer tool. Downloads tracks (with cover art) from SoundCloud and uploads them to [Gloowroom](https://gloowroom.com).
+Инструмент для переноса треков из SoundCloud на [Gloowroom](https://gloowroom.com). Скачивает аудио (с обложкой) из SoundCloud и загружает на Gloowroom.
 
-## Features
+## Возможности
 
-- Single track download & upload
-- Full playlist/album transfer
-- Cover art download and upload
-- M4A/MP3/WAV/FLAC/OGG support
-- Automatic retry and error handling
-- Progress tracking with summary
+- Перенос одного трека
+- Перенос целого плейлиста/альбома
+- Скачивание и загрузка обложки
+- Поддержка M4A/MP3/WAV/FLAC/OGG
+- Автоматические повторы и обработка ошибок
+- Итоговый отчёт по загрузкам
+- SDK для Gloowroom API (можно использовать отдельно)
 
-## Project Structure
+## Структура проекта
 
 ```
 sc2gloow/
-├── sc2gloow.py              # Main entry point
+├── sc2gloow.py              # Точка входа
 ├── config/
-│   └── config.json          # Your tokens (gitignored)
+│   ├── config.json          # Токены (в .gitignore)
+│   └── config.example.json  # Шаблон конфига
 ├── sc2gloow/
-│   ├── core/
-│   │   ├── downloader.py    # SoundCloud download logic
-│   │   └── uploader.py      # Gloowroom upload logic
+│   ├── sdk/
+│   │   ├── gloowroom/       # SDK для Gloowroom API
+│   │   │   └── client.py    # GloowroomClient
+│   │   └── soundcloud/      # SDK для SoundCloud
+│   │       └── downloader.py # SoundCloudDownloader
 │   └── utils/
-│       └── config.py        # Config loader
+│       └── config.py        # Загрузка конфига
 ├── requirements.txt
 ├── .gitignore
 └── README.md
 ```
 
-## Setup
+## Установка
 
-1. Clone the repo:
+1. Клонировать репозиторий:
    ```bash
-   git clone https://github.com/yourname/sc2gloow.git
+   git clone https://github.com/shalavochkk/sc2gloow.git
    cd sc2gloow
    ```
 
-2. Install dependencies:
+2. Установить зависимости:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Install ffmpeg (required by yt-dlp):
-   - Windows: `winget install ffmpeg` or download from https://ffmpeg.org
+3. Установить ffmpeg (нужен для yt-dlp):
+   - Windows: `winget install ffmpeg` или скачать с https://ffmpeg.org
    - macOS: `brew install ffmpeg`
    - Linux: `sudo apt install ffmpeg`
 
-4. Configure:
+4. Настроить конфиг:
    ```bash
    cp config/config.example.json config/config.json
    ```
-   Edit `config/config.json` and fill in your tokens:
-   - **Gloowroom session token**: Log in to gloowroom.com, open DevTools (F12) → Application → Cookies → copy `__Secure-better-auth.session_token`
-   - **SoundCloud OAuth token**: (optional, yt-dlp works without it for public tracks)
+   Открыть `config/config.json` и заполнить токены (см. ниже).
 
-## Usage
+## Получение токенов
 
-### Single track
+### Gloowroom Session Token
+1. Зайти на [gloowroom.com](https://gloowroom.com) и авторизоваться
+2. Открыть DevTools (F12) → Application → Cookies
+3. Найти `__Secure-better-auth.session_token` и скопировать значение
+
+### SoundCloud (необязательно)
+Большинство публичных треков работают без токена. Для приватных треков может понадобиться OAuth-токен.
+
+## Использование
+
+### Один трек
 ```bash
 python sc2gloow.py https://soundcloud.com/artist/track-name
 ```
 
-### Playlist / Album
+### Плейлист / Альбом
 ```bash
 python sc2gloow.py https://soundcloud.com/artist/sets/album-name
 ```
 
-### Custom config
+### Свой конфиг
 ```bash
 python sc2gloow.py https://soundcloud.com/artist/track --config my_config.json
 ```
 
-### Custom output directory
+### Своя папка для скачивания
 ```bash
 python sc2gloow.py https://soundcloud.com/artist/track --output-dir /tmp/downloads
 ```
 
-## Getting Tokens
+## Как это работает
 
-### Gloowroom Session Token
-1. Go to [gloowroom.com](https://gloowroom.com) and log in
-2. Open DevTools (F12) → Application → Cookies
-3. Find `__Secure-better-auth.session_token` and copy its value
+1. **Извлечение** — yt-dlp получает метаданные и ссылки на скачивание
+2. **Скачивание** — аудио (M4A/MP3) + обложка в временную папку
+3. **Создание трека** — `POST /api/tracks` на Gloowroom
+4. **Загрузка аудио** — `PUT` на полученный upload URL
+5. **Загрузка обложки** — `PUT /api/tracks/{id}/cover`
+6. **Обработка** — ожидание статуса `ready` на Gloowroom
 
-### SoundCloud (optional)
-Most public tracks work without a token. For private/restricted tracks, you may need an OAuth token.
+## SDK
 
-## How It Works
+### GloowroomClient
+```python
+from sc2gloow.sdk.gloowroom import GloowroomClient
 
-1. **Extract** — Uses yt-dlp to get track metadata and download URLs
-2. **Download** — Downloads audio (M4A/MP3) + cover art to a temp directory
-3. **Create** — Creates a track entry on Gloowroom via `POST /api/tracks`
-4. **Upload Audio** — Uploads the audio file via `PUT` to the provided upload URL
-5. **Upload Cover** — Uploads cover art via `PUT /api/tracks/{id}/cover`
-6. **Process** — Waits for Gloowroom to process the track (status: ready)
+client = GloowroomClient(session_token="your_token")
+track_id, url, err = client.upload_track_full(
+    audio_path="track.m4a",
+    title="My Track",
+    description="Description",
+    cover_path="cover.jpg"
+)
+```
 
-## Requirements
+### SoundCloudDownloader
+```python
+from sc2gloow.sdk.soundcloud import SoundCloudDownloader
+
+dl = SoundCloudDownloader(output_dir="./downloads")
+tracks, album = dl.extract_track_list("https://soundcloud.com/artist/sets/album")
+audio, cover, title, desc = dl.download(tracks[0]["url"])
+```
+
+## Требования
 
 - Python 3.8+
 - ffmpeg
 - requests
 - yt-dlp
 
-## License
+## Лицензия
 
 MIT

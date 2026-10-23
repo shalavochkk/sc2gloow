@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-sc2gloow - SoundCloud to Gloowroom transfer tool
+sc2gloow — SoundCloud to Gloowroom transfer tool
 
 Downloads tracks from SoundCloud and uploads them to Gloowroom.
 
@@ -13,12 +13,12 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sc2gloow.core.downloader import SoundCloudDownloader
-from sc2gloow.core.uploader import GloowroomUploader
+from sc2gloow.sdk.soundcloud import SoundCloudDownloader
+from sc2gloow.sdk.gloowroom import GloowroomClient
 from sc2gloow.utils.config import load_config
 
 
@@ -27,34 +27,26 @@ def main():
         description="Transfer tracks from SoundCloud to Gloowroom"
     )
     parser.add_argument("url", help="SoundCloud track or playlist URL")
-    parser.add_argument(
-        "--config", default="config/config.json", help="Path to config file"
-    )
-    parser.add_argument(
-        "--output-dir", default=None, help="Output directory for downloads"
-    )
+    parser.add_argument("--config", default="config/config.json", help="Config path")
+    parser.add_argument("--output-dir", default=None, help="Output directory")
     args = parser.parse_args()
 
-    # Load config
     config = load_config(args.config)
     session_token = config.get("gloowroom_session_token", "")
-    if session_token == "YOUR_GLOOWROOM_SESSION_TOKEN" or not session_token:
-        print("ERROR: Set your Gloowroom session token in config/config.json")
+    if not session_token or "YOUR_" in session_token:
+        print("ERROR: Set gloowroom_session_token in config/config.json")
         sys.exit(1)
 
     output_dir = args.output_dir or config.get("output_dir", "./downloads")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Initialize
     downloader = SoundCloudDownloader(output_dir=output_dir)
-    uploader = GloowroomUploader(
+    client = GloowroomClient(
         session_token=session_token,
-        api_url=config.get("gloowroom_api_url", "https://gloowroom.com"),
-        upload_timeout=config.get("upload_timeout", 300),
-        processing_timeout=config.get("processing_timeout", 90),
+        base_url=config.get("gloowroom_api_url", "https://gloowroom.com"),
+        timeout=config.get("upload_timeout", 300),
     )
 
-    # Extract track list
     tracks, album_title = downloader.extract_track_list(args.url)
     print(f"\n{'='*50}")
     print(f"Found {len(tracks)} track(s) to transfer")
@@ -74,29 +66,33 @@ def main():
             results.append((track.get("title", "Unknown"), False))
             continue
 
-        work_dir = None
+        work_dir = tempfile.mkdtemp(prefix="sc_dl_", dir=output_dir)
         try:
-            audio_path, cover_path, title, description, work_dir = downloader.download(track_url)
+            audio_path, cover_path, title, description = downloader.download(track_url, work_dir)
 
             if not audio_path:
-                print("    No audio file, skipping upload")
+                print("    No audio file, skipping")
                 results.append((title, False))
                 continue
 
-            track_id, msg = uploader.upload_track(audio_path, title, description, cover_path)
-            print(f"    {msg}")
+            track_id, track_url_result, err = client.upload_track_full(
+                audio_path, title, description, cover_path
+            )
+            if err:
+                print(f"    {err}")
+            else:
+                print(f"    Uploaded: {track_url_result}")
             results.append((title, track_id is not None))
         except Exception as e:
             print(f"    ERROR: {e}")
             results.append((track.get("title", "Unknown"), False))
         finally:
-            if work_dir and os.path.exists(work_dir):
+            if os.path.exists(work_dir):
                 try:
                     shutil.rmtree(work_dir)
                 except Exception:
                     pass
 
-    # Summary
     print(f"\n{'='*50}")
     print("SUMMARY")
     print(f"{'='*50}")

@@ -1,7 +1,8 @@
+"""SoundCloud SDK — download helpers."""
+
 import os
 import re
 import tempfile
-import shutil
 import yt_dlp
 
 
@@ -9,7 +10,7 @@ class SoundCloudDownloader:
     """Downloads tracks from SoundCloud using yt-dlp."""
 
     def __init__(self, output_dir=None):
-        self.output_dir = output_dir or tempfile.mkdtemp(prefix="sc_dl_")
+        self.output_dir = output_dir
 
     def extract_track_list(self, sc_url):
         """Extract track list from URL (single track or playlist)."""
@@ -37,9 +38,11 @@ class SoundCloudDownloader:
         else:
             return [{"title": info.get("title", "Untitled"), "url": sc_url}], None
 
-    def download(self, sc_url):
+    def download(self, sc_url, work_dir=None):
         """Download a single track. Returns (audio_path, cover_path, title, description)."""
-        work_dir = tempfile.mkdtemp(prefix="sc_dl_", dir=self.output_dir)
+        if work_dir is None:
+            work_dir = tempfile.mkdtemp(prefix="sc_dl_", dir=self.output_dir)
+
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": os.path.join(work_dir, "%(title)s.%(ext)s"),
@@ -64,7 +67,6 @@ class SoundCloudDownloader:
             description = info.get("description", "") or ""
             description = re.sub(r"<[^>]+>", "", description).strip()[:500]
 
-        # Find downloaded files
         audio_path = None
         cover_path = None
         for f in os.listdir(work_dir):
@@ -76,4 +78,4 @@ class SoundCloudDownloader:
             elif f.endswith((".jpg", ".jpeg", ".png", ".webp")):
                 cover_path = full
 
-        return audio_path, cover_path, title, description, work_dir
+        return audio_path, cover_path, title, description
