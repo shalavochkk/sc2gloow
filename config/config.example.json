@@ -1,0 +1,9 @@
+{
+  "gloowroom_session_token": "YOUR_GLOOWROOM_SESSION_TOKEN",
+  "soundcloud_oauth_token": "YOUR_SOUNDCLOUD_OAUTH_TOKEN",
+  "gloowroom_api_url": "https://gloowroom.com",
+  "soundcloud_api_url": "https://api-v2.soundcloud.com",
+  "output_dir": "./downloads",
+  "upload_timeout": 300,
+  "processing_timeout": 90
+}
