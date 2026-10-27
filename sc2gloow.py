@@ -3,6 +3,7 @@
 sc2gloow — SoundCloud to Gloowroom transfer tool
 
 Downloads tracks from SoundCloud and uploads them to Gloowroom.
+Uses gloow_sdk for Gloowroom API interaction.
 
 Usage:
     python sc2gloow.py <soundcloud_url>
@@ -18,7 +19,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from sc2gloow.sdk.soundcloud import SoundCloudDownloader
-from sc2gloow.sdk.gloowroom import GloowroomClient
+from gloow_sdk import GloowClient
 from sc2gloow.utils.config import load_config
 
 
@@ -41,11 +42,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     downloader = SoundCloudDownloader(output_dir=output_dir)
-    client = GloowroomClient(
-        session_token=session_token,
-        base_url=config.get("gloowroom_api_url", "https://gloowroom.com"),
-        timeout=config.get("upload_timeout", 300),
-    )
+    client = GloowClient(session_token=session_token)
 
     tracks, album_title = downloader.extract_track_list(args.url)
     print(f"\n{'='*50}")
@@ -66,7 +63,7 @@ def main():
             results.append((track.get("title", "Unknown"), False))
             continue
 
-        work_dir = tempfile.mkdtemp(prefix="sc_dl_", dir=output_dir)
+        work_dir = tempfile.mkdtemp(prefix="sc_dl_")
         try:
             audio_path, cover_path, title, description = downloader.download(track_url, work_dir)
 
@@ -75,14 +72,18 @@ def main():
                 results.append((title, False))
                 continue
 
-            track_id, track_url_result, err = client.upload_track_full(
-                audio_path, title, description, cover_path
+            track_obj, err = client.tracks.upload(
+                audio_path=audio_path,
+                title=title,
+                description=description,
+                cover_path=cover_path,
             )
             if err:
                 print(f"    {err}")
+                results.append((title, False))
             else:
-                print(f"    Uploaded: {track_url_result}")
-            results.append((title, track_id is not None))
+                print(f"    Uploaded: https://gloowroom.com/tracks/{track_obj.slug}")
+                results.append((title, True))
         except Exception as e:
             print(f"    ERROR: {e}")
             results.append((track.get("title", "Unknown"), False))
